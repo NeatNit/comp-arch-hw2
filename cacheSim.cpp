@@ -38,40 +38,34 @@ inline unsigned long int lsbmask(unsigned long int x) {
 }
 
 
-class cacheAssoc
+class cacheAssocSet
 {
-	unsigned BSize, Assoc;
+	unsigned Assoc;
 public:
-	cacheAssoc(unsigned BSize, unsigned Assoc) : BSize(BSize), Assoc(Assoc) {}
+	cacheAssocSet(unsigned Assoc) : Assoc(Assoc) {}
 
-	cacheAssoc(const cacheAssoc & cp) : cacheAssoc(cp.BSize, cp.Assoc) {}
+	cacheAssocSet(const cacheAssocSet & cp) : cacheAssocSet(cp.Assoc) {} // don't change this line - it's a copy constructor used in vector fill constructors
 
-	// read the given address
-	// if successful, return true
-	// if not in this cache association, return false
-	bool readAddress(unsigned long int tag, unsigned long int offset, unsigned long int & data) {
-		// TO DO
-		data = /* TO DO */;
-	}
-
-	// write to the given address
-	// if successful, return true
-	// if not in this cache association, return false
-	bool writeAddress(unsigned long int tag, unsigned long int offset, unsigned long int data) {
+	// Is the given tag in the set?
+	bool isTagInSet(unsigned long int tag) {
 		// TO DO
 	}
 
-	// add a block to this cache association
-	// address = base address (offset = 0) of the added block
-	// data = the data in the block
+	// Evict the specified tag from the set
+	// If the tag was not in the tag in the first place, do nothing and return false
+	// If it was evicted, return true
+	bool evictTag(unsigned long int tag) {
+		// TO DO
+	}
+
+	// Add a tag to this set
+	// if the set is full, you must evict another tag. In that case:
+	// 1. evict the least recently used tag (up to you to track it! you can use the method shown in the lecture)
+	// 2. set the output value: evicted_tag = <tag you had to evict>
+	// 3. return true
 	//
-	// if you had to evict a block to add this one, then:
-	// 1. evict the least recently used block (up to you to track it!)
-	// 2. write the evicted block's identifier into evicted_address
-	// 3. return a vector containing the data in the evicted line
-	//
-	// if you didn't have to evict a block, return an empty vector
-	std::vector<unsigned long int> addBlock(unsigned long int tag, std::vector<unsigned long int> line, unsigned long int & evicted_tag) {
+	// if you didn't have to evict a tag, return false
+	bool addTag(unsigned long int tag, unsigned long int & evicted_tag) {
 		// TO DO
 	}
 };
@@ -80,7 +74,7 @@ class LevelCache
 {
 	unsigned BSize, Assoc, LSize, numOfSets;
 
-	std::vector<cacheAssoc> sets;
+	std::vector<cacheAssocSet> sets;
 
 	struct AddressParts
     {
@@ -127,7 +121,7 @@ public:
 	LevelCache(unsigned BSize, unsigned Assoc, unsigned LSize)
 	: BSize(BSize), Assoc(Assoc), LSize(LSize), numOfSets(twopow(LSize - BSize - Assoc)),
 
-	sets(numOfSets, cacheAssoc(BSize, Assoc))
+	sets(numOfSets, cacheAssocSet(BSize, Assoc))
 	{}
 
 	// read the given address
@@ -169,6 +163,25 @@ public:
 		return evicted_line;
 	}
 
+
+	// Is the block containing the given address in the cache?
+	bool isBlockInSet(unsigned long int address) {
+		// TO DO
+	}
+
+	// Evict the block containing the given address from the cache
+	// If the block was not in the cache in the first place, do nothing and return false
+	// If it was evicted, return true
+	bool evictBlock(unsigned long int address) {
+		// TO DO
+	}
+
+	// Add the block containing the given address to this cache
+	// Returns whether a block had to be evicted
+	// If so, the base address of that block will be written to evicted_block
+	bool addTag(unsigned long int address, unsigned long int & evicted_block) {
+		// TO DO
+	}
 };
 
 class cacheSim
@@ -176,20 +189,28 @@ class cacheSim
 	unsigned MemCyc, BSize, L1Size, L2Size, L1Assoc,
 		L2Assoc, L1Cyc, L2Cyc, WrAlloc;
 
-	std::map<unsigned long int, unsigned long int> main_memory;
-
-	std::vector<cacheAssoc> L1Cache, L2Cache;
+	LevelCache L1Cache, L2Cache;
 
 public:
 	cacheSim(unsigned MemCyc, unsigned BSize, unsigned L1Size, unsigned L2Size, unsigned L1Assoc,
 		unsigned L2Assoc, unsigned L1Cyc, unsigned L2Cyc, unsigned WrAlloc)
 		: MemCyc(MemCyc), BSize(BSize), L1Size(L1Size), L2Size(L2Size), L1Assoc(L1Assoc),
-		L2Assoc(L2Assoc), L1Cyc(L1Cyc), L2Cyc(L2Cyc), WrAlloc(WrAlloc)
+		L2Assoc(L2Assoc), L1Cyc(L1Cyc), L2Cyc(L2Cyc), WrAlloc(WrAlloc),
 
-		//
-		{
+		// L1 and L2 caches
+		L1Cache(BSize, L1Assoc, L1Size),
+		L2Cache(BSize, L2Assoc, L2Size)
+		{}
 
-		}
+	// simulate a read from an address, return the number of cycles it took
+	unsigned long int readAddress(unsigned long int address) {
+
+	}
+
+	// simulate a write to an address, return the number of cycles it took
+	unsigned long int writeAddress(unsigned long int address) {
+
+	}
 
 };
 
