@@ -41,6 +41,9 @@ inline unsigned long int lsbmask(unsigned long int x) {
 class cacheAssocSet
 {
 	unsigned Assoc;
+
+	// your data structure(s) here!
+	// don't forget to initialize them in the constructor
 public:
 	cacheAssocSet(unsigned Assoc) : Assoc(Assoc) {}
 
@@ -124,63 +127,35 @@ public:
 	sets(numOfSets, cacheAssocSet(BSize, Assoc))
 	{}
 
-	// read the given address
-	// if successful, return true
-	// if not in this cache, return false
-	bool readAddress(unsigned long int address, unsigned long int & data) {
-		AddressParts parts = SplitAddress(address);
-		return sets[parts.set].readAddress(parts.tag, parts.offset, data);
-	}
-
-	// write to the given address
-	// if successful, return true
-	// if not in this cache, return false
-	bool writeAddress(unsigned long int address, unsigned long int data) {
-		AddressParts parts = SplitAddress(address);
-		return sets[parts.set].writeAddress(parts.tag, parts.offset, data);
-	}
-
-	// add a block to this cache
-	// address = base address (offset = 0) of the added block
-	// data = the data in the block
-	//
-	// if you had to evict a block to add this one, then:
-	// 1. evict the least recently used block (up to you to track it!)
-	// 2. write the evicted block's identifier into evicted_address
-	// 3. return a vector containing the data in the evicted line
-	//
-	// if you didn't have to evict a block, return an empty vector
-	std::vector<unsigned long int> addBlock(unsigned long int address, std::vector<unsigned long int> line, unsigned long int & evicted_address) {
-		AddressParts parts = SplitAddress(address);
-		unsigned long int evicted_tag;
-		std::vector<unsigned long int> evicted_line = sets[parts.set].addBlock(parts.tag, line, evicted_tag);
-
-		if (!evicted_line:empty()) {
-			// a line has been evicted!
-			parts.tag = evicted_tag;
-			evicted_address = MergeAddress(parts);
-		}
-		return evicted_line;
-	}
-
-
 	// Is the block containing the given address in the cache?
 	bool isBlockInSet(unsigned long int address) {
-		// TO DO
+		AddressParts parts = SplitAddress(address);
+		return sets[parts.set].isTagInSet(parts.tag);
 	}
 
 	// Evict the block containing the given address from the cache
 	// If the block was not in the cache in the first place, do nothing and return false
 	// If it was evicted, return true
 	bool evictBlock(unsigned long int address) {
-		// TO DO
+		AddressParts parts = SplitAddress(address);
+		return sets[parts.set].evictTag(parts.tag);
 	}
 
 	// Add the block containing the given address to this cache
 	// Returns whether a block had to be evicted
 	// If so, the base address of that block will be written to evicted_block
-	bool addTag(unsigned long int address, unsigned long int & evicted_block) {
-		// TO DO
+	bool addBlock(unsigned long int address, unsigned long int & evicted_address) {
+		AddressParts parts = SplitAddress(address);
+		unsigned long int evicted_tag;
+		bool evicted = sets[parts.set].addTag(parts.tag, evicted_tag);
+
+		if (evicted) {
+			// a block has been evicted!
+			parts.tag = evicted_tag;
+			evicted_address = MergeAddress(parts);
+		}
+
+		return evicted;
 	}
 };
 
