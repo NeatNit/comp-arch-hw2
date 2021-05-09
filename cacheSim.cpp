@@ -65,7 +65,7 @@ public:
 
 	// Add a tag to this set
 	// if the set is full, you must evict another tag. In that case:
-	// 1. evict the least recently used tag (up to you to track it! you can use the method shown in the lecture)
+	// 1. evict the least recently used tag (up to you to track it! you can use the method shown in the lecture, or whatever other method you can think of)
 	// 2. set the output value: evicted_tag = <tag you had to evict>
 	// 3. return true
 	//
