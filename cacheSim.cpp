@@ -5,6 +5,7 @@
 #include <fstream>
 #include <sstream>
 #include <map>
+#include <vector>
 
 using std::FILE;
 using std::string;
@@ -14,6 +15,43 @@ using std::cerr;
 using std::ifstream;
 using std::stringstream;
 using std::map;
+using std::vector;
+
+class cacheAssoc
+{
+	unsigned BSize, Assoc;
+public:
+	cacheAssoc(unsigned BSize, unsigned Assoc) : BSize(BSize), Assoc(Assoc) {}
+
+	// read the given address
+	// if successful, return true
+	// if not in this cache association, return false
+	bool readAddress(unsigned long int block_identifier, unsigned long int offset, unsigned long int & data) {
+		// TO DO
+		data = /* TO DO */;
+	}
+
+	// write to the given address
+	// if successful, return true
+	// if not in this cache association, return false
+	bool writeAddress(unsigned long int block_identifier, unsigned long int offset, unsigned long int data) {
+		// TO DO
+	}
+
+	// add a block to this cache association
+	// address = base address (offset = 0) of the added block
+	// data = the data in the block
+	//
+	// if you had to evict a block to add this one, then:
+	// 1. evict the least recently used block (up to you to track it!)
+	// 2. write the evicted block's identifier into evicted_address
+	// 3. return a vector containing the data in the
+	//
+	// if you didn't have to evict a block, return an empty vector
+	std::vector<unsigned long int> addBlock(unsigned long int block_identifier, std::vector<unsigned long int> data, unsigned long int & evicted_identifier) {
+		// TO DO
+	}
+};
 
 class cacheSim
 {
@@ -21,6 +59,7 @@ class cacheSim
 		L2Assoc, L1Cyc, L2Cyc, WrAlloc;
 
 	std::map<unsigned long int, unsigned long int> main_memory;
+
 
 public:
 	cacheSim(unsigned MemCyc, unsigned BSize, unsigned L1Size, unsigned L2Size, unsigned L1Assoc,
