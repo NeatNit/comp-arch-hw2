@@ -4,6 +4,7 @@
 #include <iostream>
 #include <fstream>
 #include <sstream>
+#include <map>
 
 using std::FILE;
 using std::string;
@@ -12,11 +13,14 @@ using std::endl;
 using std::cerr;
 using std::ifstream;
 using std::stringstream;
+using std::map;
 
 class cacheSim
 {
 	unsigned MemCyc, BSize, L1Size, L2Size, L1Assoc,
 		L2Assoc, L1Cyc, L2Cyc, WrAlloc;
+
+	std::map<unsigned long int, unsigned long int> main_memory;
 
 public:
 	cacheSim(unsigned MemCyc, unsigned BSize, unsigned L1Size, unsigned L2Size, unsigned L1Assoc,
