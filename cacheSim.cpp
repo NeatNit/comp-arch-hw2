@@ -6,6 +6,7 @@
 #include <sstream>
 #include <map>
 #include <vector>
+#include <stdexcept>
 
 using std::FILE;
 using std::string;
@@ -16,6 +17,7 @@ using std::ifstream;
 using std::stringstream;
 using std::map;
 using std::vector;
+using std::logic_error;
 
 // log base 2 of an unsigned integer, rounded down
 // note: there are assembly instructions to do this but inline assembly sucks...
@@ -128,7 +130,7 @@ public:
 	{}
 
 	// Is the block containing the given address in the cache?
-	bool isBlockInSet(unsigned long int address) {
+	bool isBlockInCache(unsigned long int address) {
 		AddressParts parts = SplitAddress(address);
 		return sets[parts.set].isTagInSet(parts.tag);
 	}
@@ -144,7 +146,7 @@ public:
 	// Add the block containing the given address to this cache
 	// Returns whether a block had to be evicted
 	// If so, the base address of that block will be written to evicted_block
-	bool addBlock(unsigned long int address, unsigned long int & evicted_address) {
+	bool addBlock(unsigned long int address, unsigned long int & evicted_block) {
 		AddressParts parts = SplitAddress(address);
 		unsigned long int evicted_tag;
 		bool evicted = sets[parts.set].addTag(parts.tag, evicted_tag);
@@ -152,39 +154,162 @@ public:
 		if (evicted) {
 			// a block has been evicted!
 			parts.tag = evicted_tag;
-			evicted_address = MergeAddress(parts);
+			evicted_block = MergeAddress(parts);
 		}
 
 		return evicted;
 	}
 };
 
-class cacheSim
+class CacheSim
 {
 	unsigned MemCyc, BSize, L1Size, L2Size, L1Assoc,
 		L2Assoc, L1Cyc, L2Cyc, WrAlloc;
 
+	// caches
 	LevelCache L1Cache, L2Cache;
 
+	// stats
+	unsigned long int L1Total, L1Miss, L2Total, L2Miss;
 public:
-	cacheSim(unsigned MemCyc, unsigned BSize, unsigned L1Size, unsigned L2Size, unsigned L1Assoc,
+	CacheSim(unsigned MemCyc, unsigned BSize, unsigned L1Size, unsigned L2Size, unsigned L1Assoc,
 		unsigned L2Assoc, unsigned L1Cyc, unsigned L2Cyc, unsigned WrAlloc)
 		: MemCyc(MemCyc), BSize(BSize), L1Size(L1Size), L2Size(L2Size), L1Assoc(L1Assoc),
 		L2Assoc(L2Assoc), L1Cyc(L1Cyc), L2Cyc(L2Cyc), WrAlloc(WrAlloc),
 
 		// L1 and L2 caches
 		L1Cache(BSize, L1Assoc, L1Size),
-		L2Cache(BSize, L2Assoc, L2Size)
+		L2Cache(BSize, L2Assoc, L2Size),
+
+		L1Total(0), L1Miss(0), L2Total(0), L2Miss(0)
 		{}
+
+	void getStats(unsigned long int & L1Total, unsigned long int & L1Miss, unsigned long int & L2Total, unsigned long int & L2Miss) {
+		L1Total = this->L1Total;
+		L1Miss = this->L1Miss;
+
+		L2Total = this->L2Total;
+		L2Miss = this->L2Miss;
+	}
 
 	// simulate a read from an address, return the number of cycles it took
 	unsigned long int readAddress(unsigned long int address) {
+		++L1Total;
 
+		unsigned long int evicted_block;
+		bool evicted;
+		unsigned long int cyc = L1Cyc;
+
+		if (L1Cache.isBlockInCache(address)) {
+			// L1 HIT
+			// sanity check - this would not be checked in hardware
+			if (!L2Cache.isBlockInCache(address)) throw logic_error("Cache inclusion policy error: L1 contains a block that L2 does not");
+			return cyc;
+		}
+
+		// L1 MISS
+		++L1Miss;
+		++L2Total;
+		cyc += L2Cyc;
+
+		if (L2Cache.isBlockInCache(address)) {
+			// L2 HIT
+
+			// must add the block to L1Cache
+			evicted = L1Cache.addBlock(address, evicted_block);
+
+			if (evicted) {
+				// just some sanity checking
+				// can think of this as simulating the write-back
+				if (!L2Cache.isBlockInCache(evicted_block)) throw logic_error("Cache inclusion policy error: L1 evicted a block that wasn't in L2");
+			}
+
+			return cyc;
+		}
+
+		// L2 MISS
+		++L2Miss;
+		cyc += MemCyc;
+
+		// read block from memory, and add it to the L2Cache
+		evicted = L2Cache.addBlock(address, evicted_block);
+		if (evicted) {
+			// evict from L1 as well, to maintain the inclusion policy
+			L1Cache.evictBlock(evicted_block); // don't care about return value (we would care if there were more levels below)
+		}
+
+		// now add to L1
+		evicted = L1Cache.addBlock(address, evicted_block);
+
+		if (evicted) {
+			// just some sanity checking
+			// can think of this as simulating the write-back
+			if (!L2Cache.isBlockInCache(evicted_block)) throw logic_error("Cache inclusion policy error: L1 evicted a block that wasn't in L2");
+		}
+
+		return cyc;
 	}
 
 	// simulate a write to an address, return the number of cycles it took
 	unsigned long int writeAddress(unsigned long int address) {
+		++L1Total;
 
+		unsigned long int evicted_block;
+		bool evicted;
+		unsigned long int cyc = L1Cyc;
+
+		if (L1Cache.isBlockInCache(address)) {
+			// L1 HIT
+			// sanity check - just code debug, this is not simulating anything real
+			if (!L2Cache.isBlockInCache(address)) throw logic_error("Cache inclusion policy error: L1 contains a block that L2 does not");
+			return cyc;
+		}
+
+		// L1 MISS
+		++L1Miss;
+		++L2Total;
+		cyc += L2Cyc;
+
+		if (L2Cache.isBlockInCache(address)) {
+			// L2 HIT
+
+			if (WrAlloc) {
+				// must add the block to L1Cache
+				evicted = L1Cache.addBlock(address, evicted_block);
+
+				if (evicted) {
+					// just some sanity checking
+					// can think of this as simulating the write-back
+					if (!L2Cache.isBlockInCache(evicted_block)) throw logic_error("Cache inclusion policy error: L1 evicted a block that wasn't in L2");
+				}
+			}
+
+			return cyc;
+		}
+
+		// L2 MISS
+		++L2Miss;
+		cyc += MemCyc;
+
+		if (WrAlloc) {
+			// read block from memory, and add it to the L2Cache
+			evicted = L2Cache.addBlock(address, evicted_block);
+			if (evicted) {
+				// evict from L1 as well, to maintain the inclusion policy
+				L1Cache.evictBlock(evicted_block); // don't care about return value (we would care if there were more levels below)
+			}
+
+			// now add to L1
+			evicted = L1Cache.addBlock(address, evicted_block);
+
+			if (evicted) {
+				// just some sanity checking
+				// can think of this as simulating the write-back
+				if (!L2Cache.isBlockInCache(evicted_block)) throw logic_error("Cache inclusion policy error: L1 evicted a block that wasn't in L2");
+			}
+		}
+
+		return cyc;
 	}
 
 };
@@ -239,6 +364,9 @@ int main(int argc, char **argv) {
 		}
 	}
 
+	CacheSim sim(MemCyc, BSize, L1Size, L2Size, L1Assoc, L2Assoc, L1Cyc, L2Cyc, WrAlloc);
+
+	unsigned long int totalAccesses = 0, totalCyc = 0;
 	while (getline(file, line)) {
 
 		stringstream ss(line);
@@ -264,11 +392,20 @@ int main(int argc, char **argv) {
 		// DEBUG - remove this line
 		cout << " (dec) " << num << endl;
 
+		if (operation == 'r') {
+			totalCyc += sim.readAddress(address);
+		} else if (operation == 'w') {
+			totalCyc += sim.writeAddress(address);
+		}
+		++totalAccesses;
 	}
 
-	double L1MissRate;
-	double L2MissRate;
-	double avgAccTime;
+	unsigned long int L1Total, L1Miss, L2Total, L2Miss;
+	sim.getStats(L1Total, L1Miss, L2Total, L2Miss);
+
+	double L1MissRate = L1Miss / L1Total;
+	double L2MissRate = L2Miss / L2Total;
+	double avgAccTime = totalCyc / totalAccesses;
 
 	printf("L1miss=%.03f ", L1MissRate);
 	printf("L2miss=%.03f ", L2MissRate);
