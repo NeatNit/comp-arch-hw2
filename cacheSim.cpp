@@ -23,6 +23,8 @@ class cacheAssoc
 public:
 	cacheAssoc(unsigned BSize, unsigned Assoc) : BSize(BSize), Assoc(Assoc) {}
 
+	cacheAssoc(const cacheAssoc & cp) : cacheAssoc(cp.BSize, cp.Assoc) {}
+
 	// read the given address
 	// if successful, return true
 	// if not in this cache association, return false
@@ -60,6 +62,7 @@ class cacheSim
 
 	std::map<unsigned long int, unsigned long int> main_memory;
 
+	std::vector<cacheAssoc> L1Cache, L2Cache;
 
 public:
 	cacheSim(unsigned MemCyc, unsigned BSize, unsigned L1Size, unsigned L2Size, unsigned L1Assoc,
