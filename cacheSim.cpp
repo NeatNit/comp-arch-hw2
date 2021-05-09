@@ -17,6 +17,27 @@ using std::stringstream;
 using std::map;
 using std::vector;
 
+// log base 2 of an unsigned integer, rounded down
+// note: there are assembly instructions to do this but inline assembly sucks...
+inline unsigned long int log2(unsigned long int x) {
+    unsigned long int l = 0;
+    if (x == 0) return std::numeric_limits<unsigned long int>::max();
+    while(x >>= 1) ++l;
+    return l;
+}
+
+// returns 2^x
+inline uint32_t twopow(uint32_t x) {
+    return 1 << x;
+}
+
+// create a bitmask where the last x bits are 1
+// for example: lsbmask(5) produces 00...00011111 in binary
+inline unsigned long int lsbmask(unsigned long int x) {
+    return (1 << x) - 1;
+}
+
+
 class cacheAssoc
 {
 	unsigned BSize, Assoc;
@@ -28,7 +49,7 @@ public:
 	// read the given address
 	// if successful, return true
 	// if not in this cache association, return false
-	bool readAddress(unsigned long int block_identifier, unsigned long int offset, unsigned long int & data) {
+	bool readAddress(unsigned long int tag, unsigned long int offset, unsigned long int & data) {
 		// TO DO
 		data = /* TO DO */;
 	}
@@ -36,7 +57,7 @@ public:
 	// write to the given address
 	// if successful, return true
 	// if not in this cache association, return false
-	bool writeAddress(unsigned long int block_identifier, unsigned long int offset, unsigned long int data) {
+	bool writeAddress(unsigned long int tag, unsigned long int offset, unsigned long int data) {
 		// TO DO
 	}
 
@@ -47,12 +68,107 @@ public:
 	// if you had to evict a block to add this one, then:
 	// 1. evict the least recently used block (up to you to track it!)
 	// 2. write the evicted block's identifier into evicted_address
-	// 3. return a vector containing the data in the
+	// 3. return a vector containing the data in the evicted line
 	//
 	// if you didn't have to evict a block, return an empty vector
-	std::vector<unsigned long int> addBlock(unsigned long int block_identifier, std::vector<unsigned long int> data, unsigned long int & evicted_identifier) {
+	std::vector<unsigned long int> addBlock(unsigned long int tag, std::vector<unsigned long int> line, unsigned long int & evicted_tag) {
 		// TO DO
 	}
+};
+
+class LevelCache
+{
+	unsigned BSize, Assoc, LSize, numOfSets;
+
+	std::vector<cacheAssoc> sets;
+
+	struct AddressParts
+    {
+        unsigned long int tag;
+        unsigned long int set;
+        unsigned long int offset;
+    };
+
+    AddressParts SplitAddress(unsigned long int address) {
+        AddressParts parts;
+
+        // lowest BSize bits are the offset
+        unsigned long int offset_length = BSize;
+        parts.offset = address & lsbmask(offset_length);
+        address >>= offset_length;
+
+        // next set_length bits are the set
+        unsigned long int set_length = LSize - BSize - Assoc;
+        parts.set = address & lsbmask(set_length);
+        address >>= set_length;
+
+        // rest of the bits are the tag
+        parts.tag = address;
+
+        return parts;
+    }
+
+    unsigned long int MergeAddress(AddressParts parts) {
+    	// most significant bits are the tag
+    	unsigned long int address = parts.tag;
+
+    	// add the set to the end
+    	unsigned long int set_length = LSize - BSize - Assoc;
+    	address <<= set_length;
+    	address |= parts.set;
+
+    	// add the offset after that
+    	address <<= BSize;
+    	address |= parts.offset;
+
+    	return address;
+    }
+public:
+	LevelCache(unsigned BSize, unsigned Assoc, unsigned LSize)
+	: BSize(BSize), Assoc(Assoc), LSize(LSize), numOfSets(twopow(LSize - BSize - Assoc)),
+
+	sets(numOfSets, cacheAssoc(BSize, Assoc))
+	{}
+
+	// read the given address
+	// if successful, return true
+	// if not in this cache, return false
+	bool readAddress(unsigned long int address, unsigned long int & data) {
+		AddressParts parts = SplitAddress(address);
+		return sets[parts.set].readAddress(parts.tag, parts.offset, data);
+	}
+
+	// write to the given address
+	// if successful, return true
+	// if not in this cache, return false
+	bool writeAddress(unsigned long int address, unsigned long int data) {
+		AddressParts parts = SplitAddress(address);
+		return sets[parts.set].writeAddress(parts.tag, parts.offset, data);
+	}
+
+	// add a block to this cache
+	// address = base address (offset = 0) of the added block
+	// data = the data in the block
+	//
+	// if you had to evict a block to add this one, then:
+	// 1. evict the least recently used block (up to you to track it!)
+	// 2. write the evicted block's identifier into evicted_address
+	// 3. return a vector containing the data in the evicted line
+	//
+	// if you didn't have to evict a block, return an empty vector
+	std::vector<unsigned long int> addBlock(unsigned long int address, std::vector<unsigned long int> line, unsigned long int & evicted_address) {
+		AddressParts parts = SplitAddress(address);
+		unsigned long int evicted_tag;
+		std::vector<unsigned long int> evicted_line = sets[parts.set].addBlock(parts.tag, line, evicted_tag);
+
+		if (!evicted_line:empty()) {
+			// a line has been evicted!
+			parts.tag = evicted_tag;
+			evicted_address = MergeAddress(parts);
+		}
+		return evicted_line;
+	}
+
 };
 
 class cacheSim
@@ -69,6 +185,8 @@ public:
 		unsigned L2Assoc, unsigned L1Cyc, unsigned L2Cyc, unsigned WrAlloc)
 		: MemCyc(MemCyc), BSize(BSize), L1Size(L1Size), L2Size(L2Size), L1Assoc(L1Assoc),
 		L2Assoc(L2Assoc), L1Cyc(L1Cyc), L2Cyc(L2Cyc), WrAlloc(WrAlloc)
+
+		//
 		{
 
 		}
