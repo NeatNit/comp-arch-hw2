@@ -136,7 +136,7 @@ public:
 
         for (int i = 0 ; i < Assoc_Size; ++i) {
             Way &way = Ways[i];
-            cout << "looking for victim: i = " << i << ", lru_index = " << lru_index << endl;
+            cout << "looking for victim: i = " << i << ", lru_index = " << way.lru_index << endl;
             if (way.lru_index == 0) {
                 // Found our victim
                 bool was_valid = way.valid;
