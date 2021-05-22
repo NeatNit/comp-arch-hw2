@@ -7,6 +7,7 @@
 #include <map>
 #include <vector>
 #include <stdexcept>
+#include <limits>
 
 using std::FILE;
 using std::string;
@@ -178,7 +179,7 @@ class LevelCache
         unsigned long int offset;
     };
 
-    AddressParts SplitAddress(unsigned long int address) {
+    AddressParts SplitAddress(unsigned long int address) const {
         AddressParts parts;
 
         // lowest BSize bits are the offset
@@ -216,7 +217,7 @@ public:
 	LevelCache(unsigned BSize, unsigned Assoc, unsigned LSize)
 	: BSize(BSize), Assoc(Assoc), LSize(LSize), numOfSets(twopow(LSize - BSize - Assoc)),
 
-	sets(numOfSets, cacheAssocSet(BSize, Assoc))
+	sets(numOfSets, cacheAssocSet(Assoc))
 	{}
 
 	// DEBUG ONLY
@@ -245,10 +246,10 @@ public:
 	// Add the block containing the given address to this cache
 	// Returns whether a block had to be evicted
 	// If so, the base address of that block will be written to evicted_block
-	bool addBlock(unsigned long int address, unsigned long int & evicted_block, bool & was_dirty) {
+	bool addBlock(unsigned long int address, bool dirty, unsigned long int & evicted_block, bool & was_dirty) {
 		AddressParts parts = SplitAddress(address);
 		unsigned long int evicted_tag;
-		bool evicted = sets[parts.set].addTag(parts.tag, evicted_tag, was_dirty);
+		bool evicted = sets[parts.set].addTag(parts.tag, dirty, evicted_tag, was_dirty);
 
 		if (evicted) {
 			// a block has been evicted!
@@ -315,7 +316,7 @@ public:
 			// L2 HIT
 
 			// must add the block to L1Cache
-			evicted = L1Cache.addBlock(address, evicted_block, was_dirty);
+			evicted = L1Cache.addBlock(address, false, evicted_block, was_dirty);
 
 			if (evicted) {
 				if (was_dirty) {
@@ -335,7 +336,7 @@ public:
 		cyc += MemCyc;
 
 		// read block from memory, and add it to the L2Cache
-		evicted = L2Cache.addBlock(address, evicted_block, was_dirty);
+		evicted = L2Cache.addBlock(address, false, evicted_block, was_dirty);
 		if (evicted) {
 			// evict from L1 as well, to maintain the inclusion policy
 			L1Cache.evictBlock(evicted_block, was_dirty); // don't care about return value (we would care if there were more levels below)
@@ -344,7 +345,7 @@ public:
 		}
 
 		// now add to L1
-		evicted = L1Cache.addBlock(address, evicted_block, was_dirty);
+		evicted = L1Cache.addBlock(address, false, evicted_block, was_dirty);
 
 		if (evicted) {
 			if (was_dirty) {
@@ -384,8 +385,8 @@ public:
 			// L2 HIT
 
 			if (WrAlloc) {
-				// must add the block to L1Cache
-				evicted = L1Cache.addBlock(address, evicted_block, was_dirty);
+				// must add the block to L1Cache (assume it's read back post-write)
+				evicted = L1Cache.addBlock(address, false, evicted_block, was_dirty);
 
 				if (evicted) {
 					if (was_dirty) {
@@ -406,15 +407,15 @@ public:
 		cyc += MemCyc;
 
 		if (WrAlloc) {
-			// read block from memory, and add it to the L2Cache
-			evicted = L2Cache.addBlock(address, evicted_block, was_dirty);
+			// read block from memory, and add it to the L2Cache (assume it's read back post-write)
+			evicted = L2Cache.addBlock(address, false, evicted_block, was_dirty);
 			if (evicted) {
 				// evict from L1 as well, to maintain the inclusion policy
 				L1Cache.evictBlock(evicted_block, was_dirty); // similar to L2MISS in Read, return values are irrelevant for this simulation
 			}
 
 			// now add to L1
-			evicted = L1Cache.addBlock(address, evicted_block);
+			evicted = L1Cache.addBlock(address, false, evicted_block);
 
 			if (evicted) {
 				if (was_dirty) {
