@@ -522,9 +522,9 @@ int main(int argc, char **argv) {
 	unsigned long int L1Total, L1Miss, L2Total, L2Miss;
 	sim.getStats(L1Total, L1Miss, L2Total, L2Miss);
 
-	double L1MissRate = L1Miss / L1Total;
-	double L2MissRate = L2Miss / L2Total;
-	double avgAccTime = totalCyc / totalAccesses;
+	double L1MissRate = static_cast<double>(L1Miss) / static_cast<double>(L1Total);
+	double L2MissRate = static_cast<double>(L2Miss) / static_cast<double>(L2Total);
+	double avgAccTime = static_cast<double>(totalCyc) / static_cast<double>(totalAccesses);
 
 	printf("L1miss=%.03f ", L1MissRate);
 	printf("L2miss=%.03f ", L2MissRate);
