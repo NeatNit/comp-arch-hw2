@@ -312,7 +312,7 @@ public:
 		++L2Total;
 		cyc += L2Cyc;
 
-		if (L2Cache.accessBlockInCache(address)) {
+		if (L2Cache.accessBlockInCache(address, false)) {
 			// L2 HIT
 
 			// must add the block to L1Cache
@@ -415,7 +415,7 @@ public:
 			}
 
 			// now add to L1
-			evicted = L1Cache.addBlock(address, false, evicted_block);
+			evicted = L1Cache.addBlock(address, false, evicted_block, was_dirty);
 
 			if (evicted) {
 				if (was_dirty) {
