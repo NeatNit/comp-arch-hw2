@@ -55,14 +55,14 @@ class cacheAssocSet
 	unsigned Assoc_Size;
     vector<Way> Ways;
 public:
-	cacheAssocSet(unsigned Assoc_Size) : Assoc_Size(Assoc_Size), Ways(Assoc_Size) {}
+	cacheAssocSet(unsigned Assoc_Size) : Assoc_Size(Assoc_Size), Ways(twopow(Assoc_Size)) {}
 
 	cacheAssocSet(const cacheAssocSet& cp) : cacheAssocSet(cp.Assoc_Size) {} // don't change this line - it's a copy constructor used in vector fill constructors
 
 	// DEBUG ONLY
 	// Check whether the tag is in the set, without actually accessing it and updating LRU
 	bool isTagInSet(unsigned long int tag) const {
-		for (int i = 0 ; i < Assoc_Size; ++i) {
+		for (int i = 0 ; i < Ways.size(); ++i) {
             const Way &way = Ways[i];
             if (way.valid && way.tag == tag) {
                 return true;
@@ -75,15 +75,15 @@ public:
 	// Is the given tag in the set?
 	// If so, this is an access to it, so update LRU
 	bool accessTagInSet(unsigned long int tag, bool dirty) {
-		for (int i = 0 ; i < Assoc_Size; ++i) {
+		for (int i = 0 ; i < Ways.size(); ++i) {
             Way &way = Ways[i];
             if (way.valid && way.tag == tag) {
                 // Found it! Update LRU (algorithm from lecture)
                 unsigned prev_index = way.lru_index;
-                way.lru_index = Assoc_Size - 1;
+                way.lru_index = Ways.size() - 1;
                 way.dirty |= dirty;
 
-                for (int j = 0; j < Assoc_Size; ++j)
+                for (int j = 0; j < Ways.size(); ++j)
                 {
                     Way &other_way = Ways[j];
                     if (j != i && other_way.lru_index > prev_index) {
@@ -101,7 +101,7 @@ public:
 	// If the tag was not in the set in the first place, do nothing and return false
 	// If it was evicted, return true
 	bool evictTag(unsigned long int tag, bool & was_dirty) {
-        for (int i = 0 ; i < Assoc_Size; ++i) {
+        for (int i = 0 ; i < Ways.size(); ++i) {
             Way &way = Ways[i];
             if (way.valid && way.tag == tag) {
                 // Found it! Evict, update LRU and return false
@@ -111,7 +111,7 @@ public:
                 way.valid = false;
                 way.lru_index = 0;
 
-                for (int j = 0; j < Assoc_Size; ++j)
+                for (int j = 0; j < Ways.size(); ++j)
                 {
                     Way &other_way = Ways[j];
                     if (j != i && other_way.lru_index < prev_index) {
@@ -134,7 +134,7 @@ public:
 	bool addTag(unsigned long int tag, bool dirty, unsigned long int & evicted_tag, bool & was_dirty) {
         /* Maybe add an assert that the tag is not here */
 
-        for (int i = 0 ; i < Assoc_Size; ++i) {
+        for (int i = 0 ; i < Ways.size(); ++i) {
             Way &way = Ways[i];
             cout << "looking for victim: i = " << i << ", lru_index = " << way.lru_index << endl;
             if (way.lru_index == 0) {
@@ -148,11 +148,11 @@ public:
                 }
 
                 way.tag = tag;
-                way.lru_index = Assoc_Size - 1;
+                way.lru_index = Ways.size() - 1;
                 way.valid = true;
                 way.dirty = dirty;
 
-                for (int j = 0; j < Assoc_Size; ++j)
+                for (int j = 0; j < Ways.size(); ++j)
                 {
                     Way &other_way = Ways[j];
                     if (j != i && other_way.lru_index > prev_index) {
