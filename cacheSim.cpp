@@ -39,28 +39,88 @@ inline unsigned long int lsbmask(unsigned long int x) {
     return (1 << x) - 1;
 }
 
-
 class cacheAssocSet
 {
-	unsigned Assoc;
+    struct Way
+    {
+        unsigned long int tag;
+        unsigned lru_index;
+        bool valid;
+        bool dirty;
 
-	// your data structure(s) here!
-	// don't forget to initialize them in the constructor
+        Way() : tag(0), lru_index(0), valid(false), dirty(false) {}
+    };
+
+	unsigned Assoc_Size;
+    vector<Way> Ways;
 public:
-	cacheAssocSet(unsigned Assoc) : Assoc(Assoc) {}
+	cacheAssocSet(unsigned Assoc_Size) : Assoc_Size(Assoc_Size), Ways(Assoc_Size) {}
 
-	cacheAssocSet(const cacheAssocSet & cp) : cacheAssocSet(cp.Assoc) {} // don't change this line - it's a copy constructor used in vector fill constructors
+	cacheAssocSet(const cacheAssocSet& cp) : cacheAssocSet(cp.Assoc_Size) {} // don't change this line - it's a copy constructor used in vector fill constructors
+
+	// DEBUG ONLY
+	// Check whether the tag is in the set, without actually accessing it and updating LRU
+	bool isTagInSet(unsigned long int tag) const {
+		for (int i = 0 ; i < Assoc_Size; ++i) {
+            const Way &way = Ways[i];
+            if (way.valid && way.tag == tag) {
+                return true;
+            }
+		}
+
+        return false;
+	}
 
 	// Is the given tag in the set?
-	bool isTagInSet(unsigned long int tag) {
-		// TO DO
+	// If so, this is an access to it, so update LRU
+	bool accessTagInSet(unsigned long int tag, bool dirty) {
+		for (int i = 0 ; i < Assoc_Size; ++i) {
+            Way &way = Ways[i];
+            if (way.valid && way.tag == tag) {
+                // Found it! Update LRU (algorithm from lecture)
+                unsigned prev_index = way.lru_index;
+                way.lru_index = Assoc_Size - 1;
+                way.dirty |= dirty;
+
+                for (int j = 0; j < Assoc_Size; ++j)
+                {
+                    Way &other_way = Ways[j];
+                    if (j != i && other_way.lru_index > prev_index) {
+                        --other_way.lru_index;
+                    }
+                }
+                return true;
+            }
+		}
+
+        return false;
 	}
 
 	// Evict the specified tag from the set
-	// If the tag was not in the tag in the first place, do nothing and return false
+	// If the tag was not in the set in the first place, do nothing and return false
 	// If it was evicted, return true
-	bool evictTag(unsigned long int tag) {
-		// TO DO
+	bool evictTag(unsigned long int tag, bool & was_dirty) {
+        for (int i = 0 ; i < Assoc_Size; ++i) {
+            Way &way = Ways[i];
+            if (way.valid && way.tag == tag) {
+                // Found it! Evict, update LRU and return false
+                unsigned prev_index = way.lru_index;
+                was_dirty = way.dirty;
+
+                way.valid = false;
+                way.lru_index = 0;
+
+                for (int j = 0; j < Assoc_Size; ++j)
+                {
+                    Way &other_way = Ways[j];
+                    if (j != i && other_way.lru_index < prev_index) {
+                        ++other_way.lru_index;
+                    }
+                }
+                return true;
+            }
+        }
+        return false;
 	}
 
 	// Add a tag to this set
@@ -70,8 +130,38 @@ public:
 	// 3. return true
 	//
 	// if you didn't have to evict a tag, return false
-	bool addTag(unsigned long int tag, unsigned long int & evicted_tag) {
-		// TO DO
+	bool addTag(unsigned long int tag, bool dirty, unsigned long int & evicted_tag, bool & was_dirty) {
+        /* Maybe add an assert that the tag is not here */
+
+        for (int i = 0 ; i < Assoc_Size; ++i) {
+            Way &way = Ways[i];
+            if (way.lru_index == 0) {
+                // Found our victim
+                bool was_valid = way.valid;
+                unsigned prev_index = way.lru_index; // always 0, but keep similar to other code
+
+                if (was_valid) {
+                	evicted_tag = way.tag;
+                	was_dirty = way.dirty;
+                }
+
+                way.tag = tag;
+                way.lru_index = Assoc_Size - 1;
+                way.valid = true;
+                way.dirty = dirty;
+
+                for (int j = 0; j < Assoc_Size; ++j)
+                {
+                    Way &other_way = Ways[j];
+                    if (j != i && other_way.lru_index > prev_index) {
+                        --other_way.lru_index;
+                    }
+                }
+                return was_valid;
+            }
+        }
+
+        throw logic_error("Could not find a tag with lru_index == 0"); // there should always be at least one way with lru_index = 0
 	}
 };
 
@@ -129,27 +219,36 @@ public:
 	sets(numOfSets, cacheAssocSet(BSize, Assoc))
 	{}
 
+	// DEBUG ONLY
 	// Is the block containing the given address in the cache?
-	bool isBlockInCache(unsigned long int address) {
+	// (no real access, no updating LRU)
+	bool isBlockInCache(unsigned long int address) const {
 		AddressParts parts = SplitAddress(address);
 		return sets[parts.set].isTagInSet(parts.tag);
+	}
+
+	// Is the block containing the given address in the cache?
+	// If so, access it (updates LRU accordingly)
+	bool accessBlockInCache(unsigned long int address, bool dirty) {
+		AddressParts parts = SplitAddress(address);
+		return sets[parts.set].accessTagInSet(parts.tag, dirty);
 	}
 
 	// Evict the block containing the given address from the cache
 	// If the block was not in the cache in the first place, do nothing and return false
 	// If it was evicted, return true
-	bool evictBlock(unsigned long int address) {
+	bool evictBlock(unsigned long int address, bool & was_dirty) {
 		AddressParts parts = SplitAddress(address);
-		return sets[parts.set].evictTag(parts.tag);
+		return sets[parts.set].evictTag(parts.tag, was_dirty);
 	}
 
 	// Add the block containing the given address to this cache
 	// Returns whether a block had to be evicted
 	// If so, the base address of that block will be written to evicted_block
-	bool addBlock(unsigned long int address, unsigned long int & evicted_block) {
+	bool addBlock(unsigned long int address, unsigned long int & evicted_block, bool & was_dirty) {
 		AddressParts parts = SplitAddress(address);
 		unsigned long int evicted_tag;
-		bool evicted = sets[parts.set].addTag(parts.tag, evicted_tag);
+		bool evicted = sets[parts.set].addTag(parts.tag, evicted_tag, was_dirty);
 
 		if (evicted) {
 			// a block has been evicted!
@@ -197,10 +296,10 @@ public:
 		++L1Total;
 
 		unsigned long int evicted_block;
-		bool evicted;
+		bool evicted, was_dirty;
 		unsigned long int cyc = L1Cyc;
 
-		if (L1Cache.isBlockInCache(address)) {
+		if (L1Cache.accessBlockInCache(address, false)) {
 			// L1 HIT
 			// sanity check - this would not be checked in hardware
 			if (!L2Cache.isBlockInCache(address)) throw logic_error("Cache inclusion policy error: L1 contains a block that L2 does not");
@@ -212,16 +311,20 @@ public:
 		++L2Total;
 		cyc += L2Cyc;
 
-		if (L2Cache.isBlockInCache(address)) {
+		if (L2Cache.accessBlockInCache(address)) {
 			// L2 HIT
 
 			// must add the block to L1Cache
-			evicted = L1Cache.addBlock(address, evicted_block);
+			evicted = L1Cache.addBlock(address, evicted_block, was_dirty);
 
 			if (evicted) {
-				// just some sanity checking
-				// can think of this as simulating the write-back
-				if (!L2Cache.isBlockInCache(evicted_block)) throw logic_error("Cache inclusion policy error: L1 evicted a block that wasn't in L2");
+				if (was_dirty) {
+					// write-back!
+					if (!L2Cache.accessBlockInCache(evicted_block, true)) throw logic_error("Cache inclusion policy error: L1 evicted a block that wasn't in L2");
+				} else {
+					// no write-back, only sanity checking. just debug, not done in real hardware
+					if (!L2Cache.isBlockInCache(evicted_block)) throw logic_error("Cache inclusion policy error: L1 evicted a block that wasn't in L2");
+				}
 			}
 
 			return cyc;
@@ -232,19 +335,25 @@ public:
 		cyc += MemCyc;
 
 		// read block from memory, and add it to the L2Cache
-		evicted = L2Cache.addBlock(address, evicted_block);
+		evicted = L2Cache.addBlock(address, evicted_block, was_dirty);
 		if (evicted) {
 			// evict from L1 as well, to maintain the inclusion policy
-			L1Cache.evictBlock(evicted_block); // don't care about return value (we would care if there were more levels below)
+			L1Cache.evictBlock(evicted_block, was_dirty); // don't care about return value (we would care if there were more levels below)
+			// in practice we'll assume that the block is first snoop-evicted from L1 and then from L2, so was_dirty will affect whether write-backs will occur,
+			// but we really don't care that much in this simulation since data is not being tracked and this does not affect timing per the assignment instructions.
 		}
 
 		// now add to L1
-		evicted = L1Cache.addBlock(address, evicted_block);
+		evicted = L1Cache.addBlock(address, evicted_block, was_dirty);
 
 		if (evicted) {
-			// just some sanity checking
-			// can think of this as simulating the write-back
-			if (!L2Cache.isBlockInCache(evicted_block)) throw logic_error("Cache inclusion policy error: L1 evicted a block that wasn't in L2");
+			if (was_dirty) {
+				// write-back!
+				if (!L2Cache.accessBlockInCache(evicted_block, true)) throw logic_error("Cache inclusion policy error: L1 evicted a block that wasn't in L2");
+			} else {
+				// no write-back, only sanity checking. just debug, not done in real hardware
+				if (!L2Cache.isBlockInCache(evicted_block)) throw logic_error("Cache inclusion policy error: L1 evicted a block that wasn't in L2");
+			}
 		}
 
 		return cyc;
@@ -255,13 +364,14 @@ public:
 		++L1Total;
 
 		unsigned long int evicted_block;
-		bool evicted;
+		bool evicted, was_dirty;
 		unsigned long int cyc = L1Cyc;
 
-		if (L1Cache.isBlockInCache(address)) {
+		if (L1Cache.accessBlockInCache(address, true)) {
 			// L1 HIT
 			// sanity check - just code debug, this is not simulating anything real
 			if (!L2Cache.isBlockInCache(address)) throw logic_error("Cache inclusion policy error: L1 contains a block that L2 does not");
+
 			return cyc;
 		}
 
@@ -270,17 +380,21 @@ public:
 		++L2Total;
 		cyc += L2Cyc;
 
-		if (L2Cache.isBlockInCache(address)) {
+		if (L2Cache.accessBlockInCache(address, true)) {
 			// L2 HIT
 
 			if (WrAlloc) {
 				// must add the block to L1Cache
-				evicted = L1Cache.addBlock(address, evicted_block);
+				evicted = L1Cache.addBlock(address, evicted_block, was_dirty);
 
 				if (evicted) {
-					// just some sanity checking
-					// can think of this as simulating the write-back
-					if (!L2Cache.isBlockInCache(evicted_block)) throw logic_error("Cache inclusion policy error: L1 evicted a block that wasn't in L2");
+					if (was_dirty) {
+						// write-back!
+						if (!L2Cache.accessBlockInCache(evicted_block, true)) throw logic_error("Cache inclusion policy error: L1 evicted a block that wasn't in L2");
+					} else {
+						// no write-back, only sanity checking. just debug, not done in real hardware
+						if (!L2Cache.isBlockInCache(evicted_block)) throw logic_error("Cache inclusion policy error: L1 evicted a block that wasn't in L2");
+					}
 				}
 			}
 
@@ -293,19 +407,23 @@ public:
 
 		if (WrAlloc) {
 			// read block from memory, and add it to the L2Cache
-			evicted = L2Cache.addBlock(address, evicted_block);
+			evicted = L2Cache.addBlock(address, evicted_block, was_dirty);
 			if (evicted) {
 				// evict from L1 as well, to maintain the inclusion policy
-				L1Cache.evictBlock(evicted_block); // don't care about return value (we would care if there were more levels below)
+				L1Cache.evictBlock(evicted_block, was_dirty); // similar to L2MISS in Read, return values are irrelevant for this simulation
 			}
 
 			// now add to L1
 			evicted = L1Cache.addBlock(address, evicted_block);
 
 			if (evicted) {
-				// just some sanity checking
-				// can think of this as simulating the write-back
-				if (!L2Cache.isBlockInCache(evicted_block)) throw logic_error("Cache inclusion policy error: L1 evicted a block that wasn't in L2");
+				if (was_dirty) {
+					// write-back!
+					if (!L2Cache.accessBlockInCache(evicted_block, true)) throw logic_error("Cache inclusion policy error: L1 evicted a block that wasn't in L2");
+				} else {
+					// no write-back, only sanity checking. just debug, not done in real hardware
+					if (!L2Cache.isBlockInCache(evicted_block)) throw logic_error("Cache inclusion policy error: L1 evicted a block that wasn't in L2");
+				}
 			}
 		}
 
