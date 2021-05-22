@@ -381,12 +381,12 @@ public:
 		++L2Total;
 		cyc += L2Cyc;
 
-		if (L2Cache.accessBlockInCache(address, true)) {
+		if (L2Cache.accessBlockInCache(address, false)) {
 			// L2 HIT
 
 			if (WrAlloc) {
-				// must add the block to L1Cache (assume it's read back post-write)
-				evicted = L1Cache.addBlock(address, false, evicted_block, was_dirty);
+				// must add the block to L1Cache (write into it immediately making it dirty)
+				evicted = L1Cache.addBlock(address, true, evicted_block, was_dirty);
 
 				if (evicted) {
 					if (was_dirty) {
@@ -407,15 +407,15 @@ public:
 		cyc += MemCyc;
 
 		if (WrAlloc) {
-			// read block from memory, and add it to the L2Cache (assume it's read back post-write)
+			// read block from memory, and add it to the L2Cache
 			evicted = L2Cache.addBlock(address, false, evicted_block, was_dirty);
 			if (evicted) {
 				// evict from L1 as well, to maintain the inclusion policy
 				L1Cache.evictBlock(evicted_block, was_dirty); // similar to L2MISS in Read, return values are irrelevant for this simulation
 			}
 
-			// now add to L1
-			evicted = L1Cache.addBlock(address, false, evicted_block, was_dirty);
+			// now add to L1, then write into L1 making it dirty
+			evicted = L1Cache.addBlock(address, true, evicted_block, was_dirty);
 
 			if (evicted) {
 				if (was_dirty) {
