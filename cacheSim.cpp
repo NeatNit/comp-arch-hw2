@@ -136,7 +136,6 @@ public:
 
         for (int i = 0 ; i < Ways.size(); ++i) {
             Way &way = Ways[i];
-            cout << "looking for victim: i = " << i << ", lru_index = " << way.lru_index << endl;
             if (way.lru_index == 0) {
                 // Found our victim
                 bool was_valid = way.valid;
