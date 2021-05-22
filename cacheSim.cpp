@@ -512,9 +512,9 @@ int main(int argc, char **argv) {
 		cout << " (dec) " << num << endl;
 
 		if (operation == 'r') {
-			totalCyc += sim.readAddress(address);
+			totalCyc += sim.readAddress(num);
 		} else if (operation == 'w') {
-			totalCyc += sim.writeAddress(address);
+			totalCyc += sim.writeAddress(num);
 		}
 		++totalAccesses;
 	}
