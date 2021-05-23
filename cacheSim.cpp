@@ -346,16 +346,6 @@ public:
 			// but we really don't care that much in this simulation since data is not being tracked and this does not affect timing per the assignment instructions.
 		}
 
-		if (evicted) {
-			if (was_dirty) {
-				// write-back!
-				if (!L2Cache.accessBlockInCache(evicted_block, true)) throw logic_error("Cache inclusion policy error: L1 evicted a block that wasn't in L2");
-			} else {
-				// no write-back, only sanity checking. just debug, not done in real hardware
-				if (!L2Cache.isBlockInCache(evicted_block)) throw logic_error("Cache inclusion policy error: L1 evicted a block that wasn't in L2");
-			}
-		}
-
 		return cyc;
 	}
 
