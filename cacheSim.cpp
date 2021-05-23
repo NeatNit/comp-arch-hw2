@@ -312,21 +312,23 @@ public:
 		++L2Total;
 		cyc += L2Cyc;
 
+		// Reserve room for the block to be written
+		evicted = L1Cache.addBlock(address, false, evicted_block, was_dirty);
+		if (evicted) {
+			if (was_dirty) {
+				// write-back!
+				if (!L2Cache.accessBlockInCache(evicted_block, true)) throw logic_error("Cache inclusion policy error: L1 evicted a block that wasn't in L2");
+			} else {
+				// no write-back, only sanity checking. just debug, not done in real hardware
+				if (!L2Cache.isBlockInCache(evicted_block)) throw logic_error("Cache inclusion policy error: L1 evicted a block that wasn't in L2");
+			}
+		}
+
 		if (L2Cache.accessBlockInCache(address, false)) {
 			// L2 HIT
 
-			// must add the block to L1Cache
-			evicted = L1Cache.addBlock(address, false, evicted_block, was_dirty);
-
-			if (evicted) {
-				if (was_dirty) {
-					// write-back!
-					if (!L2Cache.accessBlockInCache(evicted_block, true)) throw logic_error("Cache inclusion policy error: L1 evicted a block that wasn't in L2");
-				} else {
-					// no write-back, only sanity checking. just debug, not done in real hardware
-					if (!L2Cache.isBlockInCache(evicted_block)) throw logic_error("Cache inclusion policy error: L1 evicted a block that wasn't in L2");
-				}
-			}
+			// Copy the block into L1 cache...
+			// in this simulation, that doesn't change anything so do nothing
 
 			return cyc;
 		}
@@ -343,9 +345,6 @@ public:
 			// in practice we'll assume that the block is first snoop-evicted from L1 and then from L2, so was_dirty will affect whether write-backs will occur,
 			// but we really don't care that much in this simulation since data is not being tracked and this does not affect timing per the assignment instructions.
 		}
-
-		// now add to L1
-		evicted = L1Cache.addBlock(address, false, evicted_block, was_dirty);
 
 		if (evicted) {
 			if (was_dirty) {
@@ -381,23 +380,28 @@ public:
 		++L2Total;
 		cyc += L2Cyc;
 
-		if (L2Cache.accessBlockInCache(address, false)) {
-			// L2 HIT
+		if (WrAlloc) {
+			// Reserve room for the block to be written
+			// after everything will be done, write into it immediately making it dirty
+			// no matter what happens next, this will set the correct state in L1
+			evicted = L1Cache.addBlock(address, true, evicted_block, was_dirty);
 
-			if (WrAlloc) {
-				// must add the block to L1Cache (write into it immediately making it dirty)
-				evicted = L1Cache.addBlock(address, true, evicted_block, was_dirty);
-
-				if (evicted) {
-					if (was_dirty) {
-						// write-back!
-						if (!L2Cache.accessBlockInCache(evicted_block, true)) throw logic_error("Cache inclusion policy error: L1 evicted a block that wasn't in L2");
-					} else {
-						// no write-back, only sanity checking. just debug, not done in real hardware
-						if (!L2Cache.isBlockInCache(evicted_block)) throw logic_error("Cache inclusion policy error: L1 evicted a block that wasn't in L2");
-					}
+			if (evicted) {
+				if (was_dirty) {
+					// write-back!
+					if (!L2Cache.accessBlockInCache(evicted_block, true)) throw logic_error("Cache inclusion policy error: L1 evicted a block that wasn't in L2");
+				} else {
+					// no write-back, only sanity checking. just debug, not done in real hardware
+					if (!L2Cache.isBlockInCache(evicted_block)) throw logic_error("Cache inclusion policy error: L1 evicted a block that wasn't in L2");
 				}
 			}
+		}
+
+		// Try to use the block from L2
+		if (L2Cache.accessBlockInCache(address, !WrAlloc)) {
+			// L2 HIT
+
+			// similar to readAddress L2 hit, nothing left to do
 
 			return cyc;
 		}
@@ -412,19 +416,6 @@ public:
 			if (evicted) {
 				// evict from L1 as well, to maintain the inclusion policy
 				L1Cache.evictBlock(evicted_block, was_dirty); // similar to L2MISS in Read, return values are irrelevant for this simulation
-			}
-
-			// now add to L1, then write into L1 making it dirty
-			evicted = L1Cache.addBlock(address, true, evicted_block, was_dirty);
-
-			if (evicted) {
-				if (was_dirty) {
-					// write-back!
-					if (!L2Cache.accessBlockInCache(evicted_block, true)) throw logic_error("Cache inclusion policy error: L1 evicted a block that wasn't in L2");
-				} else {
-					// no write-back, only sanity checking. just debug, not done in real hardware
-					if (!L2Cache.isBlockInCache(evicted_block)) throw logic_error("Cache inclusion policy error: L1 evicted a block that wasn't in L2");
-				}
 			}
 		}
 
