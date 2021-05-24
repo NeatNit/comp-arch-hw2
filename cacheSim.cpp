@@ -394,7 +394,7 @@ public:
 			// L2 HIT
 
 			if (WrAlloc) {
-				// Copy the block to L1Cache
+				// Copy the block to L1Cache, and write into that
 				AddToL1(address, true);
 			}
 
