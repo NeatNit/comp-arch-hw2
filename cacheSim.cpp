@@ -271,6 +271,47 @@ class CacheSim
 
 	// stats
 	unsigned long int L1Total, L1Miss, L2Total, L2Miss;
+
+	// helper function
+	void AddToL1(unsigned long int address, bool dirty) {
+		unsigned long int evicted_block;
+		bool evicted, was_dirty;
+
+		evicted = L1Cache.addBlock(address, dirty, evicted_block, was_dirty);
+
+		if (evicted) {
+			if (was_dirty) {
+				// write-back!
+				if (!L2Cache.accessBlockInCache(evicted_block, true)) throw logic_error("Cache inclusion policy error: L1 evicted a block that wasn't in L2");
+
+				// NOTE: it is possible that `evicted_block` (E) ended up in the same set in L2 as `address` (A).
+				// In that case, E will be more recently used than A in L2.
+				// As far as I could tell, this is the desired behaviour.
+				// If not, uncomment the following line to correct for it:
+				//L2Cache.accessBlockInCache(address, false);
+			} else {
+				// no write-back, only sanity checking. just debug, not done in real hardware
+				if (!L2Cache.isBlockInCache(evicted_block)) throw logic_error("Cache inclusion policy error: L1 evicted a block that wasn't in L2");
+			}
+		}
+	}
+
+	// helper function
+	// doesn't need `dirty` argument because we never need to add a block to L2 and immediately have it dirty
+	void AddToL2(unsigned long int address) {
+		unsigned long int evicted_block;
+		bool evicted, was_dirty;
+
+		evicted = L2Cache.addBlock(address, false, evicted_block, was_dirty);
+
+		if (evicted) {
+			// evict from L1 as well, to maintain the inclusion policy
+			L1Cache.evictBlock(evicted_block, was_dirty);
+			// don't care about L1 eviction return values
+			// (we would care if there were more levels below or we needed to track data)
+		}
+	}
+
 public:
 	CacheSim(unsigned MemCyc, unsigned BSize, unsigned L1Size, unsigned L2Size, unsigned L1Assoc,
 		unsigned L2Assoc, unsigned L1Cyc, unsigned L2Cyc, unsigned WrAlloc)
@@ -296,8 +337,6 @@ public:
 	unsigned long int readAddress(unsigned long int address) {
 		++L1Total;
 
-		unsigned long int evicted_block;
-		bool evicted, was_dirty;
 		unsigned long int cyc = L1Cyc;
 
 		if (L1Cache.accessBlockInCache(address, false)) {
@@ -312,23 +351,11 @@ public:
 		++L2Total;
 		cyc += L2Cyc;
 
-		// Reserve room for the block to be written
-		evicted = L1Cache.addBlock(address, false, evicted_block, was_dirty);
-		if (evicted) {
-			if (was_dirty) {
-				// write-back!
-				if (!L2Cache.accessBlockInCache(evicted_block, true)) throw logic_error("Cache inclusion policy error: L1 evicted a block that wasn't in L2");
-			} else {
-				// no write-back, only sanity checking. just debug, not done in real hardware
-				if (!L2Cache.isBlockInCache(evicted_block)) throw logic_error("Cache inclusion policy error: L1 evicted a block that wasn't in L2");
-			}
-		}
-
 		if (L2Cache.accessBlockInCache(address, false)) {
 			// L2 HIT
 
-			// Copy the block into L1 cache...
-			// in this simulation, that doesn't change anything so do nothing
+			// Copy the block into L1 cache
+			AddToL1(address, false);
 
 			return cyc;
 		}
@@ -337,14 +364,9 @@ public:
 		++L2Miss;
 		cyc += MemCyc;
 
-		// read block from memory, and add it to the L2Cache
-		evicted = L2Cache.addBlock(address, false, evicted_block, was_dirty);
-		if (evicted) {
-			// evict from L1 as well, to maintain the inclusion policy
-			L1Cache.evictBlock(evicted_block, was_dirty); // don't care about return value (we would care if there were more levels below)
-			// in practice we'll assume that the block is first snoop-evicted from L1 and then from L2, so was_dirty will affect whether write-backs will occur,
-			// but we really don't care that much in this simulation since data is not being tracked and this does not affect timing per the assignment instructions.
-		}
+		// read block from memory, and add it to the L2Cache then to L1
+		AddToL2(address);
+		AddToL1(address, false);
 
 		return cyc;
 	}
@@ -352,9 +374,6 @@ public:
 	// simulate a write to an address, return the number of cycles it took
 	unsigned long int writeAddress(unsigned long int address) {
 		++L1Total;
-
-		unsigned long int evicted_block;
-		bool evicted, was_dirty;
 		unsigned long int cyc = L1Cyc;
 
 		if (L1Cache.accessBlockInCache(address, true)) {
@@ -370,28 +389,14 @@ public:
 		++L2Total;
 		cyc += L2Cyc;
 
-		if (WrAlloc) {
-			// Reserve room for the block to be written
-			// after everything will be done, write into it immediately making it dirty
-			// no matter what happens next, this will set the correct state in L1
-			evicted = L1Cache.addBlock(address, true, evicted_block, was_dirty);
-
-			if (evicted) {
-				if (was_dirty) {
-					// write-back!
-					if (!L2Cache.accessBlockInCache(evicted_block, true)) throw logic_error("Cache inclusion policy error: L1 evicted a block that wasn't in L2");
-				} else {
-					// no write-back, only sanity checking. just debug, not done in real hardware
-					if (!L2Cache.isBlockInCache(evicted_block)) throw logic_error("Cache inclusion policy error: L1 evicted a block that wasn't in L2");
-				}
-			}
-		}
-
 		// Try to use the block from L2
 		if (L2Cache.accessBlockInCache(address, !WrAlloc)) {
 			// L2 HIT
 
-			// similar to readAddress L2 hit, nothing left to do
+			if (WrAlloc) {
+				// Copy the block to L1Cache
+				AddToL1(address, true);
+			}
 
 			return cyc;
 		}
@@ -401,12 +406,9 @@ public:
 		cyc += MemCyc;
 
 		if (WrAlloc) {
-			// read block from memory, and add it to the L2Cache
-			evicted = L2Cache.addBlock(address, false, evicted_block, was_dirty);
-			if (evicted) {
-				// evict from L1 as well, to maintain the inclusion policy
-				L1Cache.evictBlock(evicted_block, was_dirty); // similar to L2MISS in Read, return values are irrelevant for this simulation
-			}
+			// pull from memory to L2 and then to L1, then write to L1
+			AddToL2(address);
+			AddToL1(address, true);
 		}
 
 		return cyc;
